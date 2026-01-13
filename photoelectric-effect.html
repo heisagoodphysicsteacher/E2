@@ -35,7 +35,7 @@
 
         <div id="view-sim" class="space-y-6">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div class="lg:col-span-9 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow relative overflow-hidden h-[350px] md:h-[400px]">
+                <div class="lg:col-span-8 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow relative overflow-hidden h-[350px] md:h-[400px]">
                     <h3 class="text-sm text-slate-300 font-semibold absolute top-4 left-4 z-10 bg-slate-800/80 px-2 rounded">Experimental Chamber View</h3>
                     <div class="absolute top-1/2 -translate-y-1/2 left-2 text-xs text-blue-300 font-semibold z-10 bg-slate-900/50 p-1 rounded text-center">Cathode<br>(Metal Target)</div>
                     <div class="absolute top-1/2 -translate-y-1/2 right-2 text-xs text-red-300 font-semibold z-10 bg-slate-900/50 p-1 rounded text-center">Anode<br>(Collector)</div>
@@ -44,7 +44,7 @@
                     <canvas id="simCanvas" width="800" height="350" class="w-full h-full bg-slate-900/80 rounded-lg border border-slate-600"></canvas>
                 </div>
                 
-                <div class="lg:col-span-3 grid grid-cols-2 lg:grid-cols-1 gap-4">
+                <div class="lg:col-span-4 grid grid-cols-2 gap-4 content-start">
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow text-center">
                         <h3 class="text-[10px] text-slate-400 uppercase font-semibold mb-1">Photon Energy (hf)</h3>
                         <div class="text-xl font-bold text-green-400 font-mono"><span id="out-energy">0.00</span> eV</div>
@@ -52,12 +52,13 @@
                     <div class="bg-slate-800 p-4 rounded-xl border border-red-900/50 shadow text-center">
                         <h3 class="text-[10px] text-red-300 uppercase font-semibold mb-1">Stopping Potential (Vs)</h3>
                         <div class="text-xl font-bold text-red-400 font-mono"><span id="out-stopping">-0.00</span> V</div>
-                        <div class="text-[10px] text-slate-500 mt-1">(Min V to stop max KE electrons)</div>
+                        <div class="text-[10px] text-slate-500 mt-1">(Initial Max KE in eV)</div>
                     </div>
-                    <div class="col-span-2 lg:col-span-1 bg-blue-900/20 p-4 rounded-xl border border-blue-800 shadow text-center">
+                    
+                    <div class="col-span-2 bg-blue-900/20 p-4 rounded-xl border border-blue-800 shadow text-center">
                         <h3 class="text-xs text-blue-300 uppercase font-semibold mb-1">Measured Current (I)</h3>
                         <div class="text-3xl font-bold text-blue-400 font-mono"><span id="out-current">0.00</span> μA</div>
-                         <div class="mt-3 flex justify-center items-center space-x-2 text-sm font-mono text-slate-400 bg-slate-800/50 p-2 rounded-lg">
+                         <div class="mt-2 flex justify-center items-center space-x-2 text-sm font-mono text-slate-400 bg-slate-800/50 p-2 rounded-lg">
                             <div class="w-8 h-8 rounded-full border-2 border-slate-500 flex items-center justify-center bg-slate-700 relative">
                                 A
                                 <div id="current-arrow" class="absolute -top-4 left-1/2 -translate-x-1/2 text-blue-500 text-lg opacity-0 transition-opacity">➔</div>
@@ -68,6 +69,13 @@
                             <div class="h-0.5 w-4 bg-slate-600"></div>
                         </div>
                     </div>
+
+                    <div class="col-span-2 bg-slate-800 p-4 rounded-xl border border-purple-900/50 shadow text-center">
+                        <h3 class="text-xs text-purple-300 uppercase font-semibold mb-1">Max KE at Anode (Final)</h3>
+                        <div class="text-2xl font-bold text-purple-400 font-mono"><span id="out-ke-final">0.00</span> eV</div>
+                        <div class="text-[10px] text-slate-500 mt-1">= (hf - Φ) + V_applied</div>
+                    </div>
+
                 </div>
             </div>
 
@@ -134,7 +142,7 @@
                     <p class="text-sm text-slate-400 mt-1">Verifying Einstein's Equation: e Vs = hf - work function </p>
                     <ul class="text-xs text-slate-500 list-disc list-inside mt-2">
                         <li>The slope represents Planck's constant over electron charge (h / e).</li>
-                        <li>The y-intercept represents negative work function in Volts (- work function / e).</li>
+                        <li>The y-intercept represents negative work function in Volts (work function / e).</li>
                         <li>The x-intercept is the threshold frequency (fo).</li>
                     </ul>
                 </div>
@@ -167,7 +175,8 @@
             voltage: 0.0,
             // Calculated values
             photonEnergy: 0,
-            stoppingPotential: 0,
+            stoppingPotential: 0, // This is numerically equal to initial Max KE in eV
+            finalMaxKE: 0, // [NEW] Max KE at anode
             saturationCurrent: 0,
             measuredCurrent: 0,
             currentColorHex: '#a855f7',
@@ -198,6 +207,7 @@
                 energy: document.getElementById('out-energy'),
                 stopping: document.getElementById('out-stopping'),
                 current: document.getElementById('out-current'),
+                keFinal: document.getElementById('out-ke-final'), // [NEW]
             },
             views: {
                 sim: document.getElementById('view-sim'),
@@ -217,12 +227,9 @@
         // --- View Switching Logic ---
         function switchView(viewName) {
             state.currentView = viewName;
-            // Hide all
             Object.values(dom.views).forEach(v => v.classList.add('view-hidden'));
-            // Show selected
             dom.views[viewName].classList.remove('view-hidden');
             
-            // Update button styles
             Object.values(dom.buttons).forEach(b => {
                 b.classList.remove('bg-blue-600', 'text-white');
                 b.classList.add('bg-slate-700', 'text-slate-300');
@@ -231,41 +238,38 @@
             activeBtn.classList.remove('bg-slate-700', 'text-slate-300');
             activeBtn.classList.add('bg-blue-600', 'text-white');
 
-            // Trigger graph updates if necessary when switching views
             if(viewName === 'iv') updateIVGraph();
             if(viewName === 'vsf') updateVsFGraph();
         }
 
-        // --- Physics Calculations (The Core Model) ---
+        // --- Physics Calculations ---
         function calculateCurrentForVoltage(v, satCurrent, stopPot) {
-            // PHYSICS CORRECTION: Current is 0 if V < -Vs
             if (v <= -stopPot + 0.001) return 0;
-
-            // PHYSICS CORRECTION: Smooth rise to saturation at positive V.
-            // We use a square root curve shape that starts at V = -Vs and reaches saturation near SATURATION_VOLTAGE_THRESHOLD.
-            // Normalized Voltage variable 't' that goes from 0 (at stopping potential) to >1 (at saturation)
             const voltageRange = SATURATION_VOLTAGE_THRESHOLD + stopPot;
             const voltageProgress = v + stopPot;
-            
-            let t = voltageProgress / voltageRange;
-            t = Math.max(0, t); // Ensure not below zero
-
-            // Current follows sqrt(t) shape up to saturation point
+            let t = Math.max(0, voltageProgress / voltageRange);
             let current = satCurrent * Math.sqrt(t);
-            
-            // Cap at saturation current
             return Math.min(current, satCurrent);
         }
 
         function calculatePhysics() {
             state.photonEnergy = HC_EV_NM / state.wavelength;
-            // V_s = (hf - Phi) / e. 
-            state.stoppingPotential = Math.max(0, state.photonEnergy - state.workFunction);
+            // Initial Max KE = hf - Phi. (Numerically equal to stopping potential Vs)
+            const initialMaxKE = state.photonEnergy - state.workFunction;
+            state.stoppingPotential = Math.max(0, initialMaxKE);
+
+            // [NEW] Calculate Final Max KE at Anode = Initial KE + Work done by V
+            // If initial KE is negative (no emission), final KE is 0.
+            // If retarding voltage is too strong, final KE will be calculated as negative, so we clamp to 0.
+            if (initialMaxKE > 0) {
+                state.finalMaxKE = Math.max(0, initialMaxKE + state.voltage);
+            } else {
+                state.finalMaxKE = 0;
+            }
 
             const intensityFactor = state.intensity / 100;
             state.saturationCurrent = MAX_SIM_CURRENT_UA * intensityFactor * state.efficiency;
 
-            // Calculate actual measured current based on slider voltage
             if (state.photonEnergy <= state.workFunction) {
                 state.measuredCurrent = 0;
             } else {
@@ -276,7 +280,6 @@
 
         // --- UI & Charts ---
 
-        // Helper: Wavelength to RGB Hex (Approximate)
         function wavelengthToColor(wl) {
             let R, G, B, alpha=1.0;
             if (wl>=350 && wl<440) { R=-(wl-440)/(440-350); G=0; B=1; if(wl<420) alpha=0.3+0.7*(wl-350)/(420-350);}
@@ -306,7 +309,7 @@
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    animation: { duration: 0 }, // No animation for performance
+                    animation: { duration: 0 },
                     scales: {
                         x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Voltage (V)', color: '#94a3b8' }, min: -4, max: 4, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
                         y: { title: { display: true, text: 'Current (μA)', color: '#94a3b8' }, min: 0, max: MAX_SIM_CURRENT_UA + 0.5, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
@@ -341,7 +344,6 @@
             if(state.currentView !== 'iv' && state.currentView !== 'sim') return;
 
             const curveData = [];
-            // Plot from -4V to +4V
             for(let v = -4.0; v <= 4.0; v += 0.1) {
                 let i = 0;
                 if (state.photonEnergy > state.workFunction) {
@@ -350,7 +352,6 @@
                 curveData.push({x: v, y: i});
             }
             ivChart.data.datasets[0].data = curveData;
-            // Update operating point marker
             ivChart.data.datasets[1].data = [{x: state.voltage, y: state.measuredCurrent}];
             ivChart.update();
         }
@@ -360,11 +361,7 @@
              dom.displays.vsfPhi.textContent = state.workFunction.toFixed(1) + " eV";
 
              const lineData = [];
-             // Plot frequency from ~3 to 12 x 10^14 Hz (approx 250nm to 1000nm range)
              for(let f_scaled = 3.0; f_scaled <= 12.0; f_scaled += 0.5) {
-                 // f_scaled is in units of 10^14 Hz.
-                 // h in eV*s is roughly 4.1357e-15
-                 // h*f (eV) = 4.1357e-15 * f_scaled * 1e14 = 0.41357 * f_scaled
                  const h_slope_approx = 0.41357; 
                  const hf_eV = h_slope_approx * f_scaled;
                  const Vs = hf_eV - state.workFunction;
@@ -372,9 +369,8 @@
              }
              vsfChart.data.datasets[0].data = lineData;
 
-             // Current point
              const currentF_scaled = (C_SPEED / (state.wavelength * 1e-9)) / 1e14;
-             const currentVs = Math.max(0, state.photonEnergy - state.workFunction) * (state.photonEnergy > state.workFunction ? 1 : -999); // Hide if below threshold
+             const currentVs = Math.max(0, state.photonEnergy - state.workFunction) * (state.photonEnergy > state.workFunction ? 1 : -999);
              vsfChart.data.datasets[1].data = (state.photonEnergy > state.workFunction) ? [{x: currentF_scaled, y: currentVs}] : [];
              
              vsfChart.update();
@@ -382,7 +378,6 @@
 
 
         function updateUI() {
-            // Readouts
             dom.displays.workfunc.textContent = state.workFunction.toFixed(1) + " eV";
             dom.displays.lambda.textContent = state.wavelength + " nm";
             dom.displays.intensity.textContent = state.intensity + "%";
@@ -392,11 +387,11 @@
             dom.displays.lambdaPreview.style.backgroundColor = state.currentColorHex;
             
             dom.outputs.energy.textContent = state.photonEnergy.toFixed(2);
-            // Display Vs as a negative value conventionally for retarding potential
             dom.outputs.stopping.textContent = (state.stoppingPotential > 0.01 ? "-" : "") + state.stoppingPotential.toFixed(2);
             dom.outputs.current.textContent = state.measuredCurrent.toFixed(2);
+            // [NEW] Update Final KE Display
+            dom.outputs.keFinal.textContent = state.finalMaxKE.toFixed(2);
 
-            // Voltage Status & Battery Visuals
             if(state.voltage > 0.05) {
                  dom.displays.voltageStatus.textContent = "Accelerating (+V) - Attracting Electrons";
                  dom.displays.batterySymbol.innerHTML = '<div class="text-green-400 font-bold">+ | | -</div>'; 
@@ -409,23 +404,18 @@
             }
             dom.displays.currentArrow.style.opacity = state.measuredCurrent > 0.05 ? '1' : '0';
 
-            updateIVGraph(); // Always update IV graph if possible as it's lightweight
+            updateIVGraph();
         }
 
-        // --- Simulation Animation Engine (Canvas) ---
+        // --- Simulation Animation Engine ---
         let photons = [], electrons = [];
         let lastFrameTime = 0;
-        // Canvas Geometry Constants
-        const CATHODE_X = 60;
-        const ANODE_X = 740;
-        const PLATE_WIDTH = 15;
-        const PLATE_HEIGHT = 250;
-        const PLATE_Y = 50;
-        const LIGHT_SOURCE_X = 780;
-        const LIGHT_SOURCE_Y = 20;
+        const CATHODE_X = 60; const ANODE_X = 740;
+        const PLATE_WIDTH = 15; const PLATE_HEIGHT = 250; const PLATE_Y = 50;
+        const LIGHT_SOURCE_X = 780; const LIGHT_SOURCE_Y = 20;
 
         function gameLoop(timestamp) {
-            const deltaTime = (timestamp - lastFrameTime) / 1000; // seconds
+            const deltaTime = (timestamp - lastFrameTime) / 1000;
             lastFrameTime = timestamp;
             if(state.currentView === 'sim') {
                 updateSimulation(deltaTime);
@@ -435,133 +425,82 @@
         }
 
         function updateSimulation(dt) {
-            // 1. Spawn Photons (Top Right -> Bottom Left)
+            // 1. Spawn Photons
             if(Math.random() < (state.intensity / 500)) {
                 photons.push({
                     x: LIGHT_SOURCE_X, y: LIGHT_SOURCE_Y,
-                    // Aim towards the middle of the cathode
-                    vx: -300 * (Math.random()*0.2 + 0.9), 
-                    vy: 120 * (Math.random()*0.2 + 0.9),
+                    vx: -300 * (Math.random()*0.2 + 0.9), vy: 120 * (Math.random()*0.2 + 0.9),
                     color: state.currentColorHex
                 });
             }
-            // Photon movement
             photons.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; });
 
-            // 2. Photon-Cathode Collision & Electron Emission
+            // 2. Photon Collision
             photons = photons.filter(p => {
-                // Check if it hit the front face of the cathode
                 if (p.x > CATHODE_X && p.x < CATHODE_X + PLATE_WIDTH && p.y > PLATE_Y && p.y < PLATE_Y + PLATE_HEIGHT) {
-                    // Emission condition: Energy > Work Function + Efficiency roll
                     if(state.photonEnergy > state.workFunction && Math.random() < state.efficiency) {
                         const keMax_eV = state.photonEnergy - state.workFunction;
-                        // Map eV to arbitrary simulation speed units. 
-                        // Base speed is related to sqrt(KE). Add some randomness.
+                        // Base initial speed is related to sqrt(KE_initial)
                         const baseSpeed = Math.sqrt(keMax_eV) * 100; 
                         electrons.push({
-                            x: CATHODE_X + PLATE_WIDTH + 2,
-                            y: p.y,
-                            vx: baseSpeed * (Math.random() * 0.4 + 0.8), // Initial velocity rightwards
-                            vy: (Math.random() - 0.5) * 30 // Slight vertical spread
+                            x: CATHODE_X + PLATE_WIDTH + 2, y: p.y,
+                            vx: baseSpeed * (Math.random() * 0.4 + 0.8), vy: (Math.random() - 0.5) * 30
                         });
                     }
-                    return false; // Photon absorbed
+                    return false;
                 }
-                // Remove off-screen photons
                 return p.x > 0 && p.y < simCanvas.height;
             });
 
             // 3. Electron Dynamics (The Physics of V)
-            // Electric field E is roughly Voltage / Distance. Force F = qE. Acceleration a = F/m.
-            // Simplified: Acceleration is proportional to Voltage.
-            // +V accelerates right (+vx), -V accelerates left (-vx).
-            const accelerationX = state.voltage * 400; // Arbitrary scaling factor
+            // Acceleration is proportional to Voltage.
+            const accelerationX = state.voltage * 400;
 
             electrons = electrons.filter(e => {
-                // Apply acceleration
                 e.vx += accelerationX * dt;
-                
-                // Move
-                e.x += e.vx * dt;
-                e.y += e.vy * dt;
-
-                // Collision with Anode (Collected)
+                e.x += e.vx * dt; e.y += e.vy * dt;
+                // Collected at Anode
                 if (e.x > ANODE_X && e.y > PLATE_Y && e.y < PLATE_Y + PLATE_HEIGHT) return false;
-
-                // Collision back with Cathode (Retarded back)
+                // Retarded back to Cathode
                 if (e.x < CATHODE_X + PLATE_WIDTH && e.vx < 0) return false;
-                
-                // Cleanup off-screen vertically or past anode without hitting
                 return e.y > 0 && e.y < simCanvas.height && e.x < simCanvas.width;
             });
         }
 
         function drawSimulation() {
             simCtx.clearRect(0, 0, simCanvas.width, simCanvas.height);
-            
-            // Draw Plates
-            // Cathode (Left - Emitter)
-            simCtx.fillStyle = '#334155'; // slate-700
-            simCtx.fillRect(CATHODE_X, PLATE_Y, PLATE_WIDTH, PLATE_HEIGHT);
-            simCtx.fillStyle = '#64748b';
-            simCtx.fillText("Cathode (-)", CATHODE_X-10, PLATE_Y + PLATE_HEIGHT + 15);
+            // Plates
+            simCtx.fillStyle = '#334155'; simCtx.fillRect(CATHODE_X, PLATE_Y, PLATE_WIDTH, PLATE_HEIGHT);
+            simCtx.fillStyle = '#64748b'; simCtx.fillText("Cathode (-)", CATHODE_X-10, PLATE_Y + PLATE_HEIGHT + 15);
+            simCtx.fillStyle = '#475569'; simCtx.fillRect(ANODE_X, PLATE_Y, PLATE_WIDTH, PLATE_HEIGHT);
+            simCtx.fillStyle = '#64748b'; simCtx.fillText("Anode (+)", ANODE_X-5, PLATE_Y + PLATE_HEIGHT + 15);
 
-            // Anode (Right - Collector)
-            simCtx.fillStyle = '#475569'; // slate-600
-            simCtx.fillRect(ANODE_X, PLATE_Y, PLATE_WIDTH, PLATE_HEIGHT);
-            simCtx.fillStyle = '#64748b';
-            simCtx.fillText("Anode (+)", ANODE_X-5, PLATE_Y + PLATE_HEIGHT + 15);
-
-            // Draw Photons (Wavy lines)
+            // Photons
             photons.forEach(p => {
-                simCtx.strokeStyle = p.color;
-                simCtx.lineWidth = 2;
-                simCtx.beginPath();
-                //Simple representation of a wave packet moving diagonally
-                simCtx.moveTo(p.x, p.y);
-                simCtx.lineTo(p.x + 10, p.y - 5); 
-                simCtx.stroke();
+                simCtx.strokeStyle = p.color; simCtx.lineWidth = 2; simCtx.beginPath();
+                simCtx.moveTo(p.x, p.y); simCtx.lineTo(p.x + 10, p.y - 5); simCtx.stroke();
             });
+            // Electrons
+            simCtx.fillStyle = '#60a5fa'; electrons.forEach(e => { simCtx.beginPath(); simCtx.arc(e.x, e.y, 3, 0, Math.PI * 2); simCtx.fill(); });
 
-            // Draw Electrons (Blue dots)
-            simCtx.fillStyle = '#60a5fa'; // blue-400
-            electrons.forEach(e => {
-                simCtx.beginPath();
-                simCtx.arc(e.x, e.y, 3, 0, Math.PI * 2);
-                simCtx.fill();
-            });
-
-             // Electric Field Indicator (Subtle background)
+             // E-Field Visual
              if(Math.abs(state.voltage) > 0.1) {
                 simCtx.globalAlpha = 0.1;
-                simCtx.fillStyle = state.voltage > 0 ? '#10b981' : '#ef4444'; // Green for accel, Red for retard
+                simCtx.fillStyle = state.voltage > 0 ? '#10b981' : '#ef4444';
                 simCtx.fillRect(CATHODE_X + PLATE_WIDTH, PLATE_Y, ANODE_X - (CATHODE_X + PLATE_WIDTH), PLATE_HEIGHT);
                 simCtx.globalAlpha = 1.0;
-                
-                // E-field arrow
                 simCtx.strokeStyle = state.voltage > 0 ? '#10b981' : '#ef4444';
                 simCtx.beginPath();
                 const midY = PLATE_Y + PLATE_HEIGHT/2;
-                simCtx.moveTo(CATHODE_X + PLATE_WIDTH + 20, midY);
-                simCtx.lineTo(ANODE_X - 20, midY);
-                // Arrowhead
-                if(state.voltage > 0) { // Field points Right to Left (accelerates electron right)
-                     simCtx.moveTo(CATHODE_X + PLATE_WIDTH + 30, midY - 10);
-                     simCtx.lineTo(CATHODE_X + PLATE_WIDTH + 20, midY);
-                     simCtx.lineTo(CATHODE_X + PLATE_WIDTH + 30, midY + 10);
-                } else { // Field points Left to Right (retards electron)
-                     simCtx.moveTo(ANODE_X - 30, midY - 10);
-                     simCtx.lineTo(ANODE_X - 20, midY);
-                     simCtx.lineTo(ANODE_X - 30, midY + 10);
-                }
+                simCtx.moveTo(CATHODE_X + PLATE_WIDTH + 20, midY); simCtx.lineTo(ANODE_X - 20, midY);
+                if(state.voltage > 0) { simCtx.moveTo(CATHODE_X + PLATE_WIDTH + 30, midY - 10); simCtx.lineTo(CATHODE_X + PLATE_WIDTH + 20, midY); simCtx.lineTo(CATHODE_X + PLATE_WIDTH + 30, midY + 10); } else { simCtx.moveTo(ANODE_X - 30, midY - 10); simCtx.lineTo(ANODE_X - 20, midY); simCtx.lineTo(ANODE_X - 30, midY + 10); }
                 simCtx.stroke();
                 simCtx.fillStyle = state.voltage > 0 ? '#10b981' : '#ef4444';
                 simCtx.fillText("E-Field Direction", CATHODE_X + PLATE_WIDTH + 150, midY - 15);
              }
         }
 
-
-        // --- Event Listeners & Init ---
+        // --- Init ---
         function handleInput(e) {
             const target = e.target;
             if(target.id === 'in-workfunc') state.workFunction = parseFloat(target.value);
@@ -569,23 +508,11 @@
             if(target.id === 'in-intensity') state.intensity = parseInt(target.value);
             if(target.id === 'in-efficiency') state.efficiency = parseFloat(target.value);
             if(target.id === 'in-voltage') state.voltage = parseFloat(target.value);
-
-            calculatePhysics();
-            updateUI();
-            // Update graphs if they are the active view
-            if(state.currentView === 'iv') updateIVGraph();
-            if(state.currentView === 'vsf') updateVsFGraph();
+            calculatePhysics(); updateUI();
+            if(state.currentView === 'iv') updateIVGraph(); if(state.currentView === 'vsf') updateVsFGraph();
         }
-
         Object.values(dom.inputs).forEach(input => input.addEventListener('input', handleInput));
-        
-        // Initialize
-        initCharts();
-        calculatePhysics();
-        updateUI();
-        switchView('sim'); // Default view
-        requestAnimationFrame(gameLoop);
-
+        initCharts(); calculatePhysics(); updateUI(); switchView('sim'); requestAnimationFrame(gameLoop);
     </script>
 </body>
 </html>
